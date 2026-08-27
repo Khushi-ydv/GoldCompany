@@ -1,9 +1,10 @@
 'use strict';
 
 // Gold Card Company backend
-// Plain Node http server (no external dependencies) that serves the static
-// frontend from /public and exposes two API routes for the Enquiry and
-// Feedback forms, backed by a local SQLite database (db.js).
+// Plain Node http server that serves the static frontend from /public and
+// exposes two API routes for the Enquiry and Feedback forms, backed by a
+// Postgres database (db.js). Deployable as-is on Vercel: it detects this
+// server.js entrypoint and routes traffic to it directly.
 
 const http = require('node:http');
 const fs = require('node:fs');
@@ -13,7 +14,10 @@ const db = require('./db');
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const ADMIN_KEY = process.env.ADMIN_KEY || crypto.randomBytes(9).toString('hex');
+// On Vercel, different instances could otherwise generate different random
+// keys, so ADMIN_KEY must be set explicitly there. Locally, a random one
+// generated at startup is a fine convenience.
+const ADMIN_KEY = process.env.ADMIN_KEY || (process.env.VERCEL ? null : crypto.randomBytes(9).toString('hex'));
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -90,9 +94,9 @@ function serveStatic(req, res, pathname) {
   });
 }
 
-function renderAdminPage() {
-  const enquiries = db.getEnquiries();
-  const feedback = db.getFeedback();
+async function renderAdminPage() {
+  const enquiries = await db.getEnquiries();
+  const feedback = await db.getFeedback();
 
   const enquiryRows = enquiries.map((e) => `
     <tr>
@@ -178,7 +182,7 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 400, { ok: false, error: 'Please enter a valid email address.' });
       }
 
-      const result = db.addEnquiry({ name, email, phone, propertyType, service, message });
+      const result = await db.addEnquiry({ name, email, phone, propertyType, service, message });
       return sendJson(res, 201, { ok: true, id: result.id });
     }
 
@@ -197,15 +201,18 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 400, { ok: false, error: 'Please enter a valid email address.' });
       }
 
-      const result = db.addFeedback({ name, email, rating, message });
+      const result = await db.addFeedback({ name, email, rating, message });
       return sendJson(res, 201, { ok: true, id: result.id });
     }
 
     if (req.method === 'GET' && pathname === '/admin') {
+      if (!ADMIN_KEY) {
+        return sendHtml(res, 500, '<h1>500 Not Configured</h1><p>Set an <code>ADMIN_KEY</code> environment variable to enable this page.</p>');
+      }
       if (url.searchParams.get('key') !== ADMIN_KEY) {
         return sendHtml(res, 401, '<h1>401 Unauthorized</h1><p>Missing or incorrect <code>?key=</code>.</p>');
       }
-      return sendHtml(res, 200, renderAdminPage());
+      return sendHtml(res, 200, await renderAdminPage());
     }
 
     if (req.method === 'GET') {
@@ -220,8 +227,12 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`\nGold Card Company site running at:  http://localhost:${PORT}`);
-  console.log(`Admin (submissions) view:            http://localhost:${PORT}/admin?key=${ADMIN_KEY}\n`);
-  if (!process.env.ADMIN_KEY) {
-    console.log('Tip: set ADMIN_KEY in your environment to keep this link stable across restarts.\n');
+  if (ADMIN_KEY) {
+    console.log(`Admin (submissions) view:            http://localhost:${PORT}/admin?key=${ADMIN_KEY}\n`);
+    if (!process.env.ADMIN_KEY) {
+      console.log('Tip: set ADMIN_KEY in your environment to keep this link stable across restarts.\n');
+    }
+  } else {
+    console.log('Admin view disabled: set an ADMIN_KEY environment variable to enable it.\n');
   }
 });

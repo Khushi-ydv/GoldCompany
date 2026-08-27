@@ -1,7 +1,8 @@
-data/*.db
-data/*.db-journal
+# leftover local SQLite file from before the Postgres migration, unused now
+data/
 node_modules/
 .env
+.vercel
 
 # earlier visual-mockup deliverable, not part of the deployed app
 design/

@@ -1,50 +1,56 @@
 # Gold Card Company website
 
 A real, running site: static frontend plus a small Node backend with working
-Enquiry and Feedback forms, storing submissions in a local SQLite database.
-No external services, npm packages, or accounts required.
+Enquiry and Feedback forms, storing submissions in Postgres. Deployable as-is
+on Vercel (it captures `server.js` directly and routes traffic to it).
 
-## Run it
+## Run it locally
+
+You need a Postgres connection string in `DATABASE_URL`. The easiest source
+is the same free Neon database you'll connect to Vercel (see below), copy
+its connection string into a local `.env` file:
 
 ```
-node server.js
+DATABASE_URL=postgres://...
 ```
 
-Then open **http://localhost:3000**.
+Then:
 
-(Optional: `npm run dev` restarts automatically on file changes.)
+```
+node --env-file=.env server.js
+```
+
+Then open **http://localhost:3000**. (`npm run dev` does the same but
+restarts automatically on file changes.)
 
 ## Where submissions go
 
-Every Enquiry/Feedback form submit is saved to `data/goldcard.db` (created
-automatically on first run). View them at:
+Every Enquiry/Feedback form submit is saved to Postgres. View them at:
 
 ```
 http://localhost:3000/admin?key=...
 ```
 
-The exact link, including the key, is printed to the terminal when the
-server starts. Keep that key private; anyone with the link can read
-submitted names, emails and phone numbers. To use a link that doesn't
-change every restart, set your own key:
+Set your own key (required; without it the admin page is disabled):
 
 ```
-ADMIN_KEY=some-long-secret node server.js
+ADMIN_KEY=some-long-secret node --env-file=.env server.js
 ```
 
-To change the port: `PORT=4000 node server.js`.
+Keep that key private; anyone with the link can read submitted names,
+emails and phone numbers.
+
+To change the port locally: `PORT=4000 node --env-file=.env server.js`.
 
 ## Project layout
 
 ```
 server.js        backend: routes, static file serving, admin view
-db.js             SQLite setup (Node's built-in node:sqlite, nothing to install)
+db.js             Postgres setup (Neon's serverless driver, @neondatabase/serverless)
 public/
   index.html      the landing page
   styles.css      all styling (palette, layout, forms, modals)
   script.js       opens the Enquiry/Feedback modals and submits them via fetch()
-data/
-  goldcard.db     created automatically, not committed to git
 ```
 
 ## Adding your real images
@@ -72,41 +78,23 @@ Notes:
 - The four photo slots crop to fill their frame (`object-fit: cover`), so
   compose the subject roughly centred.
 
-## Before this goes on the public internet
+## Deploying to Vercel
 
-This is set up for local use or a private demo. Before deploying it live:
+1. Push this repo to GitHub (see commands below) if you haven't already.
+2. On [vercel.com](https://vercel.com/new), import the GitHub repo. Vercel
+   detects `server.js` and deploys it directly, no build step needed.
+3. Before (or right after) the first deploy, add a database: in the
+   project, open the **Storage** tab, add the free **Neon** (Postgres)
+   integration. Vercel sets `DATABASE_URL` for you automatically.
+4. Add one more environment variable yourself, under **Settings** >
+   **Environment Variables**: `ADMIN_KEY` set to a long random string
+   (the `/admin` page is disabled until this is set).
+5. Redeploy if the database was added after the first deploy, so the new
+   env vars take effect. Submissions view:
+   `https://<your-project>.vercel.app/admin?key=<your ADMIN_KEY>`.
 
-- Put it behind HTTPS (a plain host like Render, Railway, Fly.io, or a VPS
-  with a reverse proxy all work fine with this as is).
-- Consider adding email notifications (e.g. via an SMTP provider or a
-  service like Resend) so you don't have to keep checking `/admin`.
-- The `/admin` view is protected only by the key in the URL, fine for
-  internal use, but swap in real authentication if more than a couple of
-  people need access.
-
-## Deploying to Render (free tier)
-
-This repo includes a `render.yaml` blueprint, so Render can set the whole
-service up automatically.
-
-1. Push this folder to a GitHub repo (see commands below).
-2. On [render.com](https://dashboard.render.com), click **New +** &gt;
-   **Blueprint**, connect your GitHub account if you haven't already, and
-   pick this repo. Render reads `render.yaml` and creates the web service
-   for you, on the free plan, with an `ADMIN_KEY` generated automatically.
-3. Once it's live, open your Render service, go to the **Environment** tab
-   to copy the generated `ADMIN_KEY`, and use it at
-   `https://<your-service>.onrender.com/admin?key=...`.
-
-Free-tier trade-offs to know about:
-- The service spins down after 15 minutes with no traffic, and takes about
-  a minute to wake back up on the next visit.
-- The filesystem is ephemeral: every restart, spin-down, or redeploy wipes
-  `data/goldcard.db`, so form submissions do not persist long-term. Read
-  the `/admin` page regularly (or export what you need) if this matters to
-  you before it resets. Upgrading to a paid Render plan with a persistent
-  disk (a couple of lines in `render.yaml`) removes both limitations
-  whenever you're ready.
+Neon's free tier doesn't expire or get deleted, so this setup keeps working
+indefinitely at no cost.
 
 ```
 git init
@@ -116,3 +104,11 @@ git branch -M main
 git remote add origin https://github.com/<your-username>/<your-repo>.git
 git push -u origin main
 ```
+
+## Before this goes further
+
+- Consider adding email notifications (e.g. via an SMTP provider or a
+  service like Resend) so you don't have to keep checking `/admin`.
+- The `/admin` view is protected only by the key in the URL, fine for
+  internal use, but swap in real authentication if more than a couple of
+  people need access.

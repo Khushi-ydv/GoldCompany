@@ -1,72 +1,90 @@
 'use strict';
 
-// Storage layer, uses Node's built-in SQLite (node:sqlite), so there is
-// nothing to install: the database file is created automatically on first
-// run at data/goldcard.db.
+// Storage layer, uses Neon's serverless Postgres driver over HTTP so it
+// works from Vercel Functions (no persistent local disk there, unlike a
+// normal server). Needs a DATABASE_URL env var pointing at a Postgres
+// database — on Vercel, add the free Neon integration from the project's
+// Storage tab and it sets this automatically.
 
-const { DatabaseSync } = require('node:sqlite');
-const path = require('node:path');
-const fs = require('node:fs');
+const { neon } = require('@neondatabase/serverless');
 
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+// Connecting lazily (only on the first real query, not at require time)
+// means the rest of the site still loads even before DATABASE_URL is set,
+// instead of crashing the whole process on startup.
+let sql = null;
+function getClient() {
+  if (!sql) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error('DATABASE_URL is not set. Add it in your hosting provider (or a local .env file).');
+    }
+    sql = neon(process.env.DATABASE_URL);
+  }
+  return sql;
+}
 
-const db = new DatabaseSync(path.join(dataDir, 'goldcard.db'));
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS enquiries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    created_at TEXT NOT NULL,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    phone TEXT,
-    property_type TEXT,
-    service TEXT,
-    message TEXT
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS feedback (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    created_at TEXT NOT NULL,
-    name TEXT NOT NULL,
-    email TEXT,
-    rating INTEGER,
-    message TEXT NOT NULL
-  )
-`);
-
-const insertEnquiry = db.prepare(`
-  INSERT INTO enquiries (created_at, name, email, phone, property_type, service, message)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
-`);
-
-const insertFeedback = db.prepare(`
-  INSERT INTO feedback (created_at, name, email, rating, message)
-  VALUES (?, ?, ?, ?, ?)
-`);
-
-const listEnquiries = db.prepare(`SELECT * FROM enquiries ORDER BY id DESC`);
-const listFeedback = db.prepare(`SELECT * FROM feedback ORDER BY id DESC`);
+// Table creation is idempotent (IF NOT EXISTS) and only actually runs once
+// per warm instance, the promise is memoized so later calls just await it.
+let schemaReady = null;
+function ensureSchema() {
+  if (!schemaReady) {
+    schemaReady = (async () => {
+      const sql = getClient();
+      await sql`
+        CREATE TABLE IF NOT EXISTS enquiries (
+          id SERIAL PRIMARY KEY,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          name TEXT NOT NULL,
+          email TEXT NOT NULL,
+          phone TEXT,
+          property_type TEXT,
+          service TEXT,
+          message TEXT
+        )
+      `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS feedback (
+          id SERIAL PRIMARY KEY,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          name TEXT NOT NULL,
+          email TEXT,
+          rating INTEGER,
+          message TEXT NOT NULL
+        )
+      `;
+    })();
+  }
+  return schemaReady;
+}
 
 module.exports = {
-  addEnquiry({ name, email, phone, propertyType, service, message }) {
-    const createdAt = new Date().toISOString();
-    const info = insertEnquiry.run(
-      createdAt, name, email, phone || null, propertyType || null, service || null, message || null
-    );
-    return { id: Number(info.lastInsertRowid), createdAt };
+  async addEnquiry({ name, email, phone, propertyType, service, message }) {
+    await ensureSchema();
+    const sql = getClient();
+    const rows = await sql`
+      INSERT INTO enquiries (name, email, phone, property_type, service, message)
+      VALUES (${name}, ${email}, ${phone || null}, ${propertyType || null}, ${service || null}, ${message || null})
+      RETURNING id, created_at
+    `;
+    return { id: rows[0].id, createdAt: rows[0].created_at };
   },
-  addFeedback({ name, email, rating, message }) {
-    const createdAt = new Date().toISOString();
-    const info = insertFeedback.run(createdAt, name, email || null, rating ?? null, message);
-    return { id: Number(info.lastInsertRowid), createdAt };
+  async addFeedback({ name, email, rating, message }) {
+    await ensureSchema();
+    const sql = getClient();
+    const rows = await sql`
+      INSERT INTO feedback (name, email, rating, message)
+      VALUES (${name}, ${email || null}, ${rating ?? null}, ${message})
+      RETURNING id, created_at
+    `;
+    return { id: rows[0].id, createdAt: rows[0].created_at };
   },
-  getEnquiries() {
-    return listEnquiries.all();
+  async getEnquiries() {
+    await ensureSchema();
+    const sql = getClient();
+    return sql`SELECT * FROM enquiries ORDER BY id DESC`;
   },
-  getFeedback() {
-    return listFeedback.all();
+  async getFeedback() {
+    await ensureSchema();
+    const sql = getClient();
+    return sql`SELECT * FROM feedback ORDER BY id DESC`;
   },
 };
