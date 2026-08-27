@@ -1,52 +1,26 @@
 # Gold Card Company website
 
-A real, running site: static frontend plus a small Node backend with working
-Enquiry and Feedback forms, storing submissions in Postgres. Deployable as-is
-on Vercel (it captures `server.js` directly and routes traffic to it).
+A prototype: static frontend plus a small Node backend with working
+Enquiry and Feedback forms. Submissions are validated and confirmed in the
+UI, but nothing is stored (no database, no external services, nothing to
+configure). Deployable as-is on Vercel (it captures `server.js` directly
+and routes traffic to it) or run locally with zero setup.
 
 ## Run it locally
 
-You need a Postgres connection string in `DATABASE_URL`. The easiest source
-is the same free Neon database you'll connect to Vercel (see below), copy
-its connection string into a local `.env` file:
-
 ```
-DATABASE_URL=postgres://...
-```
-
-Then:
-
-```
-node --env-file=.env server.js
+node server.js
 ```
 
 Then open **http://localhost:3000**. (`npm run dev` does the same but
 restarts automatically on file changes.)
 
-## Where submissions go
-
-Every Enquiry/Feedback form submit is saved to Postgres. View them at:
-
-```
-http://localhost:3000/admin?key=...
-```
-
-Set your own key (required; without it the admin page is disabled):
-
-```
-ADMIN_KEY=some-long-secret node --env-file=.env server.js
-```
-
-Keep that key private; anyone with the link can read submitted names,
-emails and phone numbers.
-
-To change the port locally: `PORT=4000 node --env-file=.env server.js`.
+To change the port: `PORT=4000 node server.js`.
 
 ## Project layout
 
 ```
-server.js        backend: routes, static file serving, admin view
-db.js             Postgres setup (Neon's serverless driver, @neondatabase/serverless)
+server.js        backend: static file serving + the two form routes
 public/
   index.html      the landing page
   styles.css      all styling (palette, layout, forms, modals)
@@ -80,35 +54,22 @@ Notes:
 
 ## Deploying to Vercel
 
-1. Push this repo to GitHub (see commands below) if you haven't already.
-2. On [vercel.com](https://vercel.com/new), import the GitHub repo. Vercel
-   detects `server.js` and deploys it directly, no build step needed.
-3. Before (or right after) the first deploy, add a database: in the
-   project, open the **Storage** tab, add the free **Neon** (Postgres)
-   integration. Vercel sets `DATABASE_URL` for you automatically.
-4. Add one more environment variable yourself, under **Settings** >
-   **Environment Variables**: `ADMIN_KEY` set to a long random string
-   (the `/admin` page is disabled until this is set).
-5. Redeploy if the database was added after the first deploy, so the new
-   env vars take effect. Submissions view:
-   `https://<your-project>.vercel.app/admin?key=<your ADMIN_KEY>`.
+1. Push this repo to GitHub if you haven't already.
+2. On [vercel.com/new](https://vercel.com/new), import the GitHub repo.
+   Vercel detects `server.js` and deploys it directly, no config, no
+   environment variables, no database to connect.
 
-Neon's free tier doesn't expire or get deleted, so this setup keeps working
-indefinitely at no cost.
+That's it, it's live at `https://<your-project>.vercel.app`.
 
-```
-git init
-git add .
-git commit -m "Gold Card Company site"
-git branch -M main
-git remote add origin https://github.com/<your-username>/<your-repo>.git
-git push -u origin main
-```
+## Turning this into a real backend later
 
-## Before this goes further
+Right now `/api/enquiry` and `/api/feedback` in `server.js` just validate
+the input and return success, nothing is saved. When you're ready to
+actually collect submissions, the two options are:
 
-- Consider adding email notifications (e.g. via an SMTP provider or a
-  service like Resend) so you don't have to keep checking `/admin`.
-- The `/admin` view is protected only by the key in the URL, fine for
-  internal use, but swap in real authentication if more than a couple of
-  people need access.
+- **Store them**: add a database (e.g. Postgres) and insert a row in each
+  route instead of just returning `{ ok: true }`.
+- **Email them**: call an email API (e.g. Resend, SendGrid) from each route
+  so submissions land in an inbox instead.
+
+Either way it's a small, contained change, just those two route handlers.

@@ -2,16 +2,13 @@
   "name": "gold-card-company-website",
   "version": "1.0.0",
   "private": true,
-  "description": "Gold Card Company landing page with working Enquiry & Feedback forms backed by Postgres.",
+  "description": "Gold Card Company landing page prototype with Enquiry & Feedback forms.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch --env-file=.env server.js"
+    "dev": "node --watch server.js"
   },
   "engines": {
     "node": ">=18.18.0"
-  },
-  "dependencies": {
-    "@neondatabase/serverless": "^1.1.0"
   }
 }
