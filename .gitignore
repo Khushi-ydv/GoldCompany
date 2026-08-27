@@ -1,0 +1,7 @@
+data/*.db
+data/*.db-journal
+node_modules/
+.env
+
+# earlier visual-mockup deliverable, not part of the deployed app
+design/
