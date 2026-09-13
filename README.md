@@ -1,4 +1,4 @@
-# Gold Card Company website
+# Gold Card Company website [ On Hold ] 
 
 A prototype: static frontend plus a small Node backend with working
 Enquiry and Feedback forms. Submissions are validated and confirmed in the
